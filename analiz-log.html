@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nginx Log Analyzer Ultimate</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f6f9; color: #333; padding-bottom: 50px; }
+        .navbar { background-color: #1a1d20; color: white; padding: 15px 20px; font-weight: 600; font-size: 1.2rem;}
+        .card { border: none; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 24px; }
+        .card-header { background: #fff; border-bottom: 1px solid #eaeaea; font-weight: 600; padding: 15px 20px; border-radius: 8px 8px 0 0 !important; }
+        
+        .stat-box { padding: 20px; border-radius: 8px; color: white; transition: 0.2s; }
+        .stat-box h3 { margin: 0; font-weight: 700; font-size: 1.8rem; }
+        .stat-box p { margin: 0; opacity: 0.9; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;}
+        .bg-blue { background: linear-gradient(45deg, #0d6efd, #0b5ed7); } 
+        .bg-green { background: linear-gradient(45deg, #198754, #157347); } 
+        .bg-orange { background: linear-gradient(45deg, #fd7e14, #e86e04); } 
+        .bg-red { background: linear-gradient(45deg, #dc3545, #c82333); }
+
+        .table { margin-bottom: 0; font-size: 0.85rem; }
+        .table th { background-color: #f8f9fa; color: #495057; font-weight: 600; border-bottom: 2px solid #dee2e6;}
+        .table td { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+        
+        .action-link { color: #0d6efd; cursor: pointer; text-decoration: none; font-weight: 600;}
+        .action-link:hover { text-decoration: underline; color: #0a58ca; }
+        
+        .pagination-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border-top: 1px solid #eaeaea; background: #fff; border-radius: 0 0 8px 8px;}
+        .pagination { margin: 0; }
+        .page-link { cursor: pointer; padding: 4px 8px; font-size: 0.85rem;}
+
+        #uploadSection { text-align: center; padding: 60px 20px; border: 2px dashed #adb5bd; border-radius: 10px; background: #fff; cursor: pointer; transition: 0.3s; }
+        #uploadSection:hover { border-color: #0d6efd; background: #f8f9fa; }
+        #logInput { display: none; }
+
+        .list-group-sm .list-group-item { padding: 0.6rem 0.8rem; font-size: 0.85rem; }
+        .word-wrap-all { word-break: break-word; white-space: normal; display: block; max-width: 90%;}
+        .badge-link { cursor: pointer; transition: all 0.2s; font-size: 0.85rem; padding: 0.4em 0.6em;}
+        .badge-link:hover { transform: scale(1.15); background-color: #0d6efd !important; box-shadow: 0 2px 5px rgba(0,0,0,0.2);}
+        
+        .raw-logs-container { max-height: 400px; overflow-y: auto; border: 1px solid #eaeaea; border-radius: 6px; }
+        .raw-logs-table td { white-space: normal; word-break: break-all; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<div class="navbar mb-4 shadow-sm d-flex justify-content-between">
+    <span>Nginx Log Analyzer Ultimate</span>
+    <span id="activeFiltersLabel" class="badge bg-warning text-dark" style="display:none; cursor:pointer;" onclick="resetTimeFilter()">Сбросить фильтр времени ✖</span>
+</div>
+
+<div class="container-fluid px-4">
+    <div class="card" id="uploadCard">
+        <label id="uploadSection" for="logInput">
+            <h2 class="text-primary mb-3">📁 Нажмите или перетащите файл access.log</h2>
+            <p class="text-muted">Полностью локальная обработка. Данные не покидают ваш браузер.</p>
+            <input type="file" id="logInput" accept=".log,.txt">
+        </label>
+        <div id="progressContainer" style="display: none; padding: 40px; text-align: center;">
+            <h4 id="progressText" class="mb-3">Чтение файла... 0%</h4>
+            <div class="progress" style="height: 20px; border-radius: 10px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width: 0%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="dashboard" style="display: none;">
+        <div class="row mb-4">
+            <div class="col-xl-3 col-md-6 mb-3"><div class="stat-box bg-blue"><p>Запросов</p><h3 id="statRequests">0</h3></div></div>
+            <div class="col-xl-3 col-md-6 mb-3"><div class="stat-box bg-green"><p>Уникальных IP</p><h3 id="statIPs">0</h3></div></div>
+            <div class="col-xl-3 col-md-6 mb-3"><div class="stat-box bg-orange"><p>Трафик</p><h3 id="statTraffic">0 MB</h3></div></div>
+            <div class="col-xl-3 col-md-6 mb-3"><div class="stat-box bg-red"><p>Ошибки (4xx, 5xx)</p><h3 id="statErrors">0</h3></div></div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header text-muted text-sm">Динамика (клик на столбец для фильтра по времени)</div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 220px; width: 100%;"><canvas id="timeChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header text-muted text-sm">HTTP Статусы (клик для откл/вкл)</div>
+                    <div class="card-body">
+                         <div style="position: relative; height: 220px; width: 100%;"><canvas id="statusChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">IP Адреса</div>
+                    <table class="table table-hover" id="ipTable">
+                        <thead><tr><th>IP (Клик для инфо)</th><th style="width:60px">Хиты</th></tr></thead><tbody></tbody>
+                    </table>
+                    <div class="pagination-bar" id="ipPagination"></div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">Страницы (URL)</div>
+                    <table class="table table-hover" id="pageTable">
+                        <thead><tr><th>Путь (Клик для инфо)</th><th style="width:60px">Хиты</th></tr></thead><tbody></tbody>
+                    </table>
+                    <div class="pagination-bar" id="pagePagination"></div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">Источники (Referer)</div>
+                    <table class="table table-hover" id="refererTable">
+                        <thead><tr><th>URL (Клик для инфо)</th><th style="width:60px">Переходы</th></tr></thead><tbody></tbody>
+                    </table>
+                    <div class="pagination-bar" id="refererPagination"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для IP -->
+<div class="modal fade" id="ipModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Аналитика IP: <span id="modalIpTitle" class="text-primary"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="ipSummaryView">
+                    <div class="row mb-4"><div class="col-12"><h6>График активности</h6><div style="position: relative; height: 120px; width: 100%;"><canvas id="ipTimeChart"></canvas></div></div></div>
+                    <div class="row">
+                        <div class="col-md-3"><h6>Ответы сервера</h6><ul class="list-group list-group-sm mb-2" id="ipStatusList"></ul><p class="text-muted small">Скачано: <strong id="ipTrafficTotal"></strong></p></div>
+                        <div class="col-md-3"><h6>Типы запросов</h6><ul class="list-group list-group-sm" id="ipMethodList"></ul></div>
+                        <div class="col-md-6"><h6>Заголовки (User-Agent)</h6><ul class="list-group list-group-sm" id="ipUaList"></ul></div>
+                    </div>
+                </div>
+                <div id="ipDetailView" style="display: none;">
+                    <div class="d-flex align-items-center mb-3"><button class="btn btn-sm btn-outline-secondary me-3" onclick="toggleDetailView('ip', false)">← Назад к сводке</button><h6 class="mb-0" id="ipDetailSubtitle"></h6></div>
+                    <div class="raw-logs-container">
+                        <table class="table table-sm table-striped raw-logs-table"><thead class="table-light" style="position: sticky; top: 0;"><tr><th style="width:120px">Время</th><th>Метод + URL</th><th style="width:60px">Ответ</th><th>Referer</th><th>User-Agent</th></tr></thead><tbody id="ipDetailTableBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для URL (Страницы) -->
+<div class="modal fade" id="pageModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Аналитика URL: <span id="modalPageTitle" class="text-primary" style="word-break: break-all;"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pageSummaryView">
+                    <div class="row mb-4"><div class="col-12"><h6>График обращений к странице</h6><div style="position: relative; height: 120px; width: 100%;"><canvas id="pageTimeChart"></canvas></div></div></div>
+                    <div class="row">
+                        <div class="col-md-3"><h6>Статусы ответов</h6><ul class="list-group list-group-sm" id="pageStatusList"></ul></div>
+                        <div class="col-md-3"><h6>Типы запросов</h6><ul class="list-group list-group-sm" id="pageMethodList"></ul></div>
+                        <div class="col-md-6"><h6>Заголовки (User-Agent)</h6><ul class="list-group list-group-sm" id="pageUaList"></ul></div>
+                    </div>
+                </div>
+                <div id="pageDetailView" style="display: none;">
+                    <div class="d-flex align-items-center mb-3"><button class="btn btn-sm btn-outline-secondary me-3" onclick="toggleDetailView('page', false)">← Назад к сводке</button><h6 class="mb-0" id="pageDetailSubtitle"></h6></div>
+                    <div class="raw-logs-container">
+                        <table class="table table-sm table-striped raw-logs-table"><thead class="table-light" style="position: sticky; top: 0;"><tr><th style="width:120px">Время</th><th style="width:140px">IP Адрес</th><th style="width:60px">Ответ</th><th>Referer</th><th>User-Agent</th></tr></thead><tbody id="pageDetailTableBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для Источников (Referer) -->
+<div class="modal fade" id="refererModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Аналитика Источника (Referer): <span id="modalRefererTitle" class="text-primary" style="word-break: break-all;"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="refererSummaryView">
+                    <div class="row mb-4"><div class="col-12"><h6>График переходов с источника</h6><div style="position: relative; height: 120px; width: 100%;"><canvas id="refererTimeChart"></canvas></div></div></div>
+                    <div class="row">
+                        <div class="col-md-3"><h6>Статусы ответов</h6><ul class="list-group list-group-sm" id="refererStatusList"></ul></div>
+                        <div class="col-md-3"><h6>Типы запросов</h6><ul class="list-group list-group-sm" id="refererMethodList"></ul></div>
+                        <div class="col-md-6"><h6>Заголовки (User-Agent)</h6><ul class="list-group list-group-sm" id="refererUaList"></ul></div>
+                    </div>
+                </div>
+                <div id="refererDetailView" style="display: none;">
+                    <div class="d-flex align-items-center mb-3"><button class="btn btn-sm btn-outline-secondary me-3" onclick="toggleDetailView('referer', false)">← Назад к сводке</button><h6 class="mb-0" id="refererDetailSubtitle"></h6></div>
+                    <div class="raw-logs-container">
+                        <table class="table table-sm table-striped raw-logs-table"><thead class="table-light" style="position: sticky; top: 0;"><tr><th style="width:120px">Время</th><th style="width:140px">IP Адрес</th><th>Запрошенный URL</th><th style="width:60px">Ответ</th><th>User-Agent</th></tr></thead><tbody id="refererDetailTableBody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let allLogRecords = []; 
+    let hiddenStatuses = new Set();
+    let selectedHour = null;
+
+    let charts = { time: null, status: null, ipTime: null, pageTime: null, refererTime: null };
+    let tables = { ip: null, referer: null, page: null };
+
+    const logRegex = /^(\S+)\s+\S+\s+\S+\s+\[(.*?)\]\s+"(.*?)"\s+(\d{3})\s+(\d+|-)\s+"(.*?)"\s+"(.*?)"/;
+    const months = { "Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04", "May":"05", "Jun":"06", "Jul":"07", "Aug":"08", "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12" };
+    const statusColors = { '200': '#198754', '301': '#0d6efd', '302': '#0dcaf0', '403': '#fd7e14', '404': '#ffc107', '409': '#fd7e14', '500': '#dc3545', '502': '#dc3545' };
+
+    class PaginatedTable {
+        constructor(tableId, paginationId, dataObj, linkType = null) {
+            this.tableId = tableId;
+            this.paginationId = paginationId;
+            this.linkType = linkType; 
+            this.updateData(dataObj);
+        }
+
+        updateData(dataObj) {
+            this.originalData = Object.entries(dataObj).sort((a, b) => b[1] - a[1]);
+            this.filteredData = [...this.originalData];
+            this.currentPage = 1;
+            this.pageSize = 10;
+            this.render();
+        }
+
+        changePage(page) { this.currentPage = page; this.render(); }
+
+        render() {
+            const tbody = document.querySelector(`#${this.tableId} tbody`);
+            tbody.innerHTML = '';
+            const pageData = this.filteredData.slice((this.currentPage - 1) * this.pageSize, this.currentPage * this.pageSize);
+
+            if (pageData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="text-center text-muted">Нет данных</td></tr>`;
+            } else {
+                pageData.forEach(([key, value]) => {
+                    const div = document.createElement('div'); div.textContent = key;
+                    let keyHtml = `<span title="${div.innerHTML}">${div.innerHTML}</span>`;
+                    
+                    let safeKey = div.innerHTML.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                    
+                    if(this.linkType === 'ip') keyHtml = `<a class="action-link" onclick="showIpDetails('${safeKey}')">${div.innerHTML}</a>`;
+                    if(this.linkType === 'page') keyHtml = `<a class="action-link" onclick="showPageDetails('${safeKey}')">${div.innerHTML}</a>`;
+                    if(this.linkType === 'referer') keyHtml = `<a class="action-link" onclick="showRefererDetails('${safeKey}')">${div.innerHTML}</a>`;
+
+                    tbody.innerHTML += `<tr><td>${keyHtml}</td><td><span class="badge bg-secondary">${value.toLocaleString()}</span></td></tr>`;
+                });
+            }
+            this.renderPagination();
+        }
+
+        renderPagination() {
+            const container = document.getElementById(this.paginationId);
+            const totalPages = Math.ceil(this.filteredData.length / this.pageSize);
+            
+            if (totalPages <= 1) { container.innerHTML = `<span class="text-muted small">Всего: ${this.filteredData.length}</span>`; return; }
+
+            let html = `<ul class="pagination pagination-sm m-0">`;
+            html += `<li class="page-item ${this.currentPage === 1 ? 'disabled' : ''}"><a class="page-link" onclick="tables['${this.tableId.replace('Table','')}'].changePage(${this.currentPage - 1})">«</a></li>`;
+            
+            let start = Math.max(1, this.currentPage - 2);
+            let end = Math.min(totalPages, start + 3);
+            if (end - start < 3) start = Math.max(1, end - 3);
+
+            for (let i = start; i <= end; i++) {
+                html += `<li class="page-item ${i === this.currentPage ? 'active' : ''}"><a class="page-link" onclick="tables['${this.tableId.replace('Table','')}'].changePage(${i})">${i}</a></li>`;
+            }
+            html += `<li class="page-item ${this.currentPage === totalPages ? 'disabled' : ''}"><a class="page-link" onclick="tables['${this.tableId.replace('Table','')}'].changePage(${this.currentPage + 1})">»</a></li></ul>`;
+            container.innerHTML = html;
+        }
+    }
+
+    document.getElementById('logInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('uploadSection').style.display = 'none';
+        document.getElementById('progressContainer').style.display = 'block';
+        document.getElementById('dashboard').style.display = 'none';
+
+        allLogRecords = []; hiddenStatuses.clear(); selectedHour = null;
+        const CHUNK_SIZE = 1024 * 1024 * 2;
+        let offset = 0, leftover = "";
+        const reader = new FileReader();
+
+        reader.onload = function(e) {
+            const lines = (leftover + e.target.result).split('\n');
+            leftover = lines.pop(); 
+
+            for (let i = 0; i < lines.length; i++) {
+                const match = lines[i].match(logRegex);
+                if (match) {
+                    const timeLocal = match[2];
+                    const requestStr = match[3];
+                    let hourKey = "Unknown";
+                    const tParts = timeLocal.match(/(\d{2})\/(.+?)\/(\d{4}):(\d{2}):/);
+                    if (tParts) hourKey = `${tParts[3]}-${months[tParts[2]]}-${tParts[1]} ${tParts[4]}:00`;
+
+                    const reqParts = requestStr.split(' ');
+                    const method = reqParts.length >= 2 ? reqParts[0] : 'UNKNOWN';
+                    const page = reqParts.length >= 2 ? reqParts[1].split('?')[0] : requestStr;
+
+                    allLogRecords.push({
+                        ip: match[1],
+                        time: hourKey,
+                        fullTime: timeLocal.split(' ')[0],
+                        method: method,
+                        page: page,
+                        status: match[4],
+                        bytes: match[5] === '-' ? 0 : parseInt(match[5]),
+                        ref: (match[6] !== "-" && match[6] !== "") ? match[6] : null,
+                        ua: (match[7] !== "-" && match[7] !== "") ? match[7] : "Unknown"
+                    });
+                }
+            }
+
+            offset += CHUNK_SIZE;
+            const percent = Math.min(100, Math.round((offset / file.size) * 100));
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').innerText = `Чтение файла... ${percent}%`;
+
+            if (offset < file.size) { setTimeout(readNextChunk, 5); } 
+            else { initDashboard(); }
+        };
+        function readNextChunk() { reader.readAsText(file.slice(offset, offset + CHUNK_SIZE)); }
+        readNextChunk();
+    });
+
+    function getAggregatedData() {
+        let stats = { total: 0, bytes: 0, errors: 0, ip: {}, referer: {}, page: {}, time: {}, status: {} };
+
+        for (let i = 0; i < allLogRecords.length; i++) {
+            let r = allLogRecords[i];
+            
+            if (!selectedHour || r.time === selectedHour) {
+                stats.status[r.status] = (stats.status[r.status] || 0) + 1;
+            }
+
+            if (hiddenStatuses.has(r.status)) continue; 
+            if (selectedHour && r.time !== selectedHour) continue; 
+
+            stats.time[r.time] = (stats.time[r.time] || 0) + 1;
+            stats.total++;
+            stats.bytes += r.bytes;
+            if (r.status.startsWith('4') || r.status.startsWith('5')) stats.errors++;
+
+            stats.ip[r.ip] = (stats.ip[r.ip] || 0) + 1;
+            stats.page[r.page] = (stats.page[r.page] || 0) + 1;
+            if (r.ref) stats.referer[r.ref] = (stats.referer[r.ref] || 0) + 1;
+        }
+        return stats;
+    }
+
+    function initDashboard() {
+        document.getElementById('progressContainer').style.display = 'none';
+        document.getElementById('uploadCard').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+
+        let stats = getAggregatedData();
+
+        tables.ip = new PaginatedTable('ipTable', 'ipPagination', stats.ip, 'ip');
+        tables.page = new PaginatedTable('pageTable', 'pagePagination', stats.page, 'page');
+        tables.referer = new PaginatedTable('refererTable', 'refererPagination', stats.referer, 'referer');
+
+        drawStatusChart(stats.status);
+        updateUI();
+    }
+
+    function updateUI(redrawStatus = false) {
+        let stats = getAggregatedData();
+        let trafficStr = (stats.bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        if (stats.bytes > 1024 * 1024 * 1024) trafficStr = (stats.bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+
+        document.getElementById('statRequests').innerText = stats.total.toLocaleString();
+        document.getElementById('statIPs').innerText = Object.keys(stats.ip).length.toLocaleString();
+        document.getElementById('statTraffic').innerText = trafficStr;
+        document.getElementById('statErrors').innerText = stats.errors.toLocaleString();
+
+        tables.ip.updateData(stats.ip);
+        tables.page.updateData(stats.page);
+        tables.referer.updateData(stats.referer);
+
+        drawTimeChart(stats.time);
+        if (redrawStatus) drawStatusChart(stats.status);
+    }
+
+    function drawStatusChart(statusData) {
+        const labels = Object.keys(statusData);
+        if (charts.status) charts.status.destroy();
+        charts.status = new Chart(document.getElementById('statusChart').getContext('2d'), {
+            type: 'doughnut',
+            data: { labels: labels, datasets: [{ data: Object.values(statusData), backgroundColor: labels.map(c => statusColors[c] || '#adb5bd') }] },
+            options: { 
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        onClick: function(e, legendItem, legend) {
+                            const index = legendItem.index;
+                            const status = legend.chart.data.labels[index];
+                            if (hiddenStatuses.has(status)) { hiddenStatuses.delete(status); } else { hiddenStatuses.add(status); }
+                            legend.chart.toggleDataVisibility(index);
+                            legend.chart.update(); 
+                            updateUI(false); 
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function drawTimeChart(timeData) {
+        const sortedTime = Object.entries(timeData).sort((a, b) => a[0].localeCompare(b[0]));
+        if (charts.time) charts.time.destroy();
+        charts.time = new Chart(document.getElementById('timeChart').getContext('2d'), {
+            type: 'bar',
+            data: { labels: sortedTime.map(i => i[0]), datasets: [{ label: 'Запросов', data: sortedTime.map(i => i[1]), backgroundColor: '#0d6efd', borderRadius: 2 }] },
+            options: { 
+                responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        selectedHour = charts.time.data.labels[elements[0].index];
+                        document.getElementById('activeFiltersLabel').style.display = 'block';
+                        document.getElementById('activeFiltersLabel').innerText = `Время: ${selectedHour} ✖`;
+                        updateUI(true);
+                    }
+                }
+            }
+        });
+    }
+
+    function resetTimeFilter() { selectedHour = null; document.getElementById('activeFiltersLabel').style.display = 'none'; updateUI(true); }
+
+    const ipModal = new bootstrap.Modal(document.getElementById('ipModal'));
+    const pageModal = new bootstrap.Modal(document.getElementById('pageModal'));
+    const refererModal = new bootstrap.Modal(document.getElementById('refererModal'));
+
+    window.toggleDetailView = function(context, showDetail) {
+        document.getElementById(`${context}SummaryView`).style.display = showDetail ? 'none' : 'block';
+        document.getElementById(`${context}DetailView`).style.display = showDetail ? 'block' : 'none';
+    };
+
+    function generateListHtml(dataObj, topN, type, context, target) {
+        return Object.entries(dataObj)
+            .sort((a,b)=>b[1]-a[1])
+            .slice(0, topN)
+            .map(([key, count]) => {
+                let colorStyle = (type === 'status') ? `color:${statusColors[key]||'#666'}; font-weight:bold;` : '';
+                let safeKey = key.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                let safeTarget = target.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
+                return `<li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span class="word-wrap-all" style="${colorStyle}">${key}</span> 
+                    <span class="badge bg-secondary badge-link rounded-pill" onclick="showRawLogs('${context}', '${safeTarget}', '${type}', '${safeKey}')" title="Нажмите для просмотра логов">${count}</span>
+                </li>`;
+            }).join('');
+    }
+
+    window.showRawLogs = function(context, target, filterType, filterValue) {
+        let logs = allLogRecords.filter(r => {
+            if (context === 'ip' && r.ip !== target) return false;
+            if (context === 'page' && r.page !== target) return false;
+            if (context === 'referer' && r.ref !== target) return false;
+
+            if (filterType === 'status' && r.status !== filterValue) return false;
+            if (filterType === 'method' && r.method !== filterValue) return false;
+            if (filterType === 'ua' && r.ua !== filterValue) return false;
+            return true;
+        });
+
+        let tbodyId = context === 'ip' ? 'ipDetailTableBody' : (context === 'page' ? 'pageDetailTableBody' : 'refererDetailTableBody');
+        let tbody = document.getElementById(tbodyId);
+        
+        tbody.innerHTML = logs.map(r => {
+            let statusHtml = `<span style="color:${statusColors[r.status]||'#666'}; font-weight:bold;">${r.status}</span>`;
+            if (context === 'ip') {
+                return `<tr><td>${r.fullTime.replace('+', ' ')}</td><td><strong>${r.method}</strong> ${r.page}</td><td>${statusHtml}</td><td>${r.ref || '-'}</td><td>${r.ua}</td></tr>`;
+            } else if (context === 'page') {
+                return `<tr><td>${r.fullTime.replace('+', ' ')}</td><td><strong>${r.ip}</strong></td><td>${statusHtml}</td><td>${r.ref || '-'}</td><td>${r.ua}</td></tr>`;
+            } else if (context === 'referer') {
+                return `<tr><td>${r.fullTime.replace('+', ' ')}</td><td><strong>${r.ip}</strong></td><td><strong>${r.method}</strong> ${r.page}</td><td>${statusHtml}</td><td>${r.ua}</td></tr>`;
+            }
+        }).join('');
+
+        let typeNames = { 'status': 'Статус', 'method': 'Метод', 'ua': 'User-Agent' };
+        document.getElementById(`${context}DetailSubtitle`).innerText = `Логи по фильтру: ${typeNames[filterType]} = ${filterValue} (${logs.length} шт.)`;
+
+        toggleDetailView(context, true);
+    };
+
+    window.showIpDetails = function(targetIp) {
+        document.getElementById('modalIpTitle').innerText = targetIp;
+        toggleDetailView('ip', false); 
+        
+        let logs = allLogRecords.filter(r => r.ip === targetIp);
+        let time = {}, st = {}, meth = {}, ua = {}, bytes = 0;
+
+        logs.forEach(r => { 
+            time[r.time] = (time[r.time] || 0) + 1; 
+            st[r.status] = (st[r.status] || 0) + 1; 
+            meth[r.method] = (meth[r.method] || 0) + 1;
+            ua[r.ua] = (ua[r.ua] || 0) + 1;
+            bytes += r.bytes; 
+        });
+
+        document.getElementById('ipStatusList').innerHTML = generateListHtml(st, 10, 'status', 'ip', targetIp);
+        document.getElementById('ipMethodList').innerHTML = generateListHtml(meth, 10, 'method', 'ip', targetIp);
+        document.getElementById('ipUaList').innerHTML = generateListHtml(ua, 8, 'ua', 'ip', targetIp);
+        document.getElementById('ipTrafficTotal').innerText = (bytes / 1024).toFixed(2) + ' KB';
+
+        const sTime = Object.entries(time).sort((a, b) => a[0].localeCompare(b[0]));
+        if (charts.ipTime) charts.ipTime.destroy();
+        charts.ipTime = new Chart(document.getElementById('ipTimeChart'), {
+            type: 'line', 
+            data: { labels: sTime.map(i => i[0].split(' ')[1]), datasets: [{ data: sTime.map(i => i[1]), borderColor: '#198754', fill: true, backgroundColor: 'rgba(25,135,84,0.1)', tension: 0.1 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        ipModal.show();
+    };
+
+    window.showPageDetails = function(targetPage) {
+        document.getElementById('modalPageTitle').innerText = targetPage;
+        toggleDetailView('page', false); 
+
+        let logs = allLogRecords.filter(r => r.page === targetPage);
+        let time = {}, st = {}, meth = {}, ua = {};
+
+        logs.forEach(r => { 
+            time[r.time] = (time[r.time] || 0) + 1; 
+            st[r.status] = (st[r.status] || 0) + 1; 
+            meth[r.method] = (meth[r.method] || 0) + 1;
+            ua[r.ua] = (ua[r.ua] || 0) + 1;
+        });
+
+        document.getElementById('pageStatusList').innerHTML = generateListHtml(st, 10, 'status', 'page', targetPage);
+        document.getElementById('pageMethodList').innerHTML = generateListHtml(meth, 10, 'method', 'page', targetPage);
+        document.getElementById('pageUaList').innerHTML = generateListHtml(ua, 8, 'ua', 'page', targetPage);
+
+        const sTime = Object.entries(time).sort((a, b) => a[0].localeCompare(b[0]));
+        if (charts.pageTime) charts.pageTime.destroy();
+        charts.pageTime = new Chart(document.getElementById('pageTimeChart'), {
+            type: 'bar', 
+            data: { labels: sTime.map(i => i[0].split(' ')[1]), datasets: [{ data: sTime.map(i => i[1]), backgroundColor: '#fd7e14', borderRadius: 3 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: false } } }
+        });
+        pageModal.show();
+    };
+
+    window.showRefererDetails = function(targetReferer) {
+        document.getElementById('modalRefererTitle').innerText = targetReferer;
+        toggleDetailView('referer', false); 
+
+        let logs = allLogRecords.filter(r => r.ref === targetReferer);
+        let time = {}, st = {}, meth = {}, ua = {};
+
+        logs.forEach(r => { 
+            time[r.time] = (time[r.time] || 0) + 1; 
+            st[r.status] = (st[r.status] || 0) + 1; 
+            meth[r.method] = (meth[r.method] || 0) + 1;
+            ua[r.ua] = (ua[r.ua] || 0) + 1;
+        });
+
+        document.getElementById('refererStatusList').innerHTML = generateListHtml(st, 10, 'status', 'referer', targetReferer);
+        document.getElementById('refererMethodList').innerHTML = generateListHtml(meth, 10, 'method', 'referer', targetReferer);
+        document.getElementById('refererUaList').innerHTML = generateListHtml(ua, 8, 'ua', 'referer', targetReferer);
+
+        const sTime = Object.entries(time).sort((a, b) => a[0].localeCompare(b[0]));
+        if (charts.refererTime) charts.refererTime.destroy();
+        charts.refererTime = new Chart(document.getElementById('refererTimeChart'), {
+            type: 'line', 
+            data: { labels: sTime.map(i => i[0].split(' ')[1]), datasets: [{ data: sTime.map(i => i[1]), borderColor: '#0dcaf0', fill: true, backgroundColor: 'rgba(13,202,240,0.1)', tension: 0.1 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+        refererModal.show();
+    };
+</script>
+</body>
+</html>
