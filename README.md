@@ -85,10 +85,107 @@ Log Analyzer Pro — это мощный анализатор веб-логов 
 
 ---
 
-# 📦 Установка
 
-## 1. Клонирование репозитория
+
+---
+
+## 2. Установка зависимостей
 
 ```bash
-git clone https://github.com/yourusername/log-analyzer-pro.git
-cd log-analyzer-pro
+pip install -r requirements.txt
+```
+
+---
+
+## 3. Запуск приложения
+
+```bash
+streamlit run app.py
+```
+
+---
+
+# 📁 Структура проекта
+
+```bash
+project/
+│
+├── app.py
+├── logs.db
+├── requirements.txt
+└── *.log
+```
+
+---
+
+# 🧠 Поддерживаемый формат логов
+
+Поддерживаются стандартные access.log форматы:
+
+```log
+127.0.0.1 - - [10/May/2026:13:55:36 +0300] "GET / HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
+```
+
+---
+
+# ⚡ Производительность
+
+Оптимизации:
+- SQLite WAL
+- Batch insert
+- Индексы по datetime и ua_type
+- Быстрый regex parser
+- Минимальная нагрузка RAM
+
+---
+
+# 🔥 Пример сценариев использования
+
+## SEO
+- Анализ crawl budget
+- Поиск мусорных URL
+- Анализ активности Googlebot
+
+## DevOps
+- Мониторинг трафика
+- Поиск аномалий
+- Анализ нагрузки
+
+## Security
+- Подозрительные IP
+- Спам-боты
+- Необычные User-Agent
+
+---
+
+# 📷 Интерфейс
+
+- Sidebar импорт
+- Визуальные графики
+- Таблицы
+- Конструктор условий
+- Аналитика ботов
+
+---
+
+# 🛠️ Возможные улучшения
+
+Планируемые функции:
+- GeoIP анализ
+- Экспорт CSV/Excel
+- ClickHouse поддержка
+- AI-анализ аномалий
+- Live monitoring
+- Apache/Nginx presets
+
+---
+
+# 📜 License
+
+MIT License
+
+---
+
+# 👨‍💻 Автор
+
+Developed for advanced log analysis and SEO bot research.
